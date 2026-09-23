@@ -23,6 +23,10 @@ func DataSourcePool() *schema.Resource {
 	// Generate datasource schema from resource
 	dsSchema := datasource.SchemaFromResourceSchema(ResourcePool().SchemaFunc())
 
+	// user_data is a create-only (ForceNew) attribute: the data source read does not
+	// fetch it, so it is not exposed here.
+	delete(dsSchema, "user_data")
+
 	// Set 'Optional' schema elements
 	datasource.AddOptionalFieldsToSchema(dsSchema, "name", "region", "cluster_id", "size")
 

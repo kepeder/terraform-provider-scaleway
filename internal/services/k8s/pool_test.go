@@ -1006,6 +1006,12 @@ func TestAccPool_UserData(t *testing.T) {
 					resource.TestCheckResourceAttr("scaleway_k8s_pool.main", "user_data.hello", "world"),
 				),
 			},
+			{
+				ResourceName:            "scaleway_k8s_pool.main",
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"wait_for_pool_ready", "status"},
+			},
 		},
 	})
 }
