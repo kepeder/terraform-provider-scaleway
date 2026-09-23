@@ -15,6 +15,7 @@ import (
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/identity"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/meta"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/services/account"
+	"github.com/scaleway/terraform-provider-scaleway/v2/internal/transport"
 )
 
 func ResourceRegistration() *schema.Resource {
@@ -504,7 +505,9 @@ func resourceRegistrationCreate(ctx context.Context, d *schema.ResourceData, m a
 		}
 	}
 
-	resp, err := registrarAPI.BuyDomains(buyDomainsRequest, scw.WithContext(ctx))
+	resp, err := transport.RetryOn403Value(ctx, func() (*domain.OrderResponse, error) {
+		return registrarAPI.BuyDomains(buyDomainsRequest, scw.WithContext(ctx))
+	})
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -520,9 +523,13 @@ func resourceRegistrationCreate(ctx context.Context, d *schema.ResourceData, m a
 
 	if newDnssec {
 		for _, domainName := range domainNames {
-			_, err = registrarAPI.EnableDomainDNSSEC(&domain.RegistrarAPIEnableDomainDNSSECRequest{
-				Domain: domainName,
-			}, scw.WithContext(ctx))
+			err = transport.RetryOn403(ctx, func() error {
+				_, err := registrarAPI.EnableDomainDNSSEC(&domain.RegistrarAPIEnableDomainDNSSECRequest{
+					Domain: domainName,
+				}, scw.WithContext(ctx))
+
+				return err
+			})
 			if err != nil {
 				return diag.FromErr(err)
 			}
@@ -603,9 +610,11 @@ func readRegistrationIntoState(ctx context.Context, d *schema.ResourceData, m an
 
 	firstDomain := domainNames[0]
 
-	firstResp, err := registrarAPI.GetDomain(&domain.RegistrarAPIGetDomainRequest{
-		Domain: firstDomain,
-	}, scw.WithContext(ctx))
+	firstResp, err := transport.RetryOn403Value(ctx, func() (*domain.Domain, error) {
+		return registrarAPI.GetDomain(&domain.RegistrarAPIGetDomainRequest{
+			Domain: firstDomain,
+		}, scw.WithContext(ctx))
+	})
 	if err != nil {
 		if httperrors.Is404(err) {
 			d.SetId("")

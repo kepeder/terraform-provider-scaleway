@@ -13,6 +13,7 @@ import (
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/identity"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/meta"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/services/account"
+	"github.com/scaleway/terraform-provider-scaleway/v2/internal/transport"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/types"
 )
 
@@ -131,11 +132,13 @@ func resourceDomainZoneCreate(ctx context.Context, d *schema.ResourceData, m any
 		return diag.FromErr(err)
 	}
 
-	dnsZone, err = domainAPI.CreateDNSZone(&domain.CreateDNSZoneRequest{
-		ProjectID: projectID,
-		Domain:    domainName,
-		Subdomain: subdomainName,
-	}, scw.WithContext(ctx))
+	dnsZone, err = transport.RetryOn403Value(ctx, func() (*domain.DNSZone, error) {
+		return domainAPI.CreateDNSZone(&domain.CreateDNSZoneRequest{
+			ProjectID: projectID,
+			Domain:    domainName,
+			Subdomain: subdomainName,
+		}, scw.WithContext(ctx))
+	})
 	if err != nil {
 		// Handle case where zone was already created by another process (409 conflict)
 		if httperrors.Is409(err) {
@@ -165,10 +168,12 @@ func resourceDomainZoneRead(ctx context.Context, d *schema.ResourceData, m any) 
 
 	var zone *domain.DNSZone
 
-	zones, err := domainAPI.ListDNSZones(&domain.ListDNSZonesRequest{
-		ProjectID: types.ExpandStringPtr(d.Get("project_id")),
-		DNSZones:  []string{d.Id()},
-	}, scw.WithContext(ctx))
+	zones, err := transport.RetryOn403Value(ctx, func() (*domain.ListDNSZonesResponse, error) {
+		return domainAPI.ListDNSZones(&domain.ListDNSZonesRequest{
+			ProjectID: types.ExpandStringPtr(d.Get("project_id")),
+			DNSZones:  []string{d.Id()},
+		}, scw.WithContext(ctx))
+	})
 	if err != nil {
 		if httperrors.Is404(err) {
 			d.SetId("")
@@ -209,10 +214,12 @@ func resourceDomainZoneRead(ctx context.Context, d *schema.ResourceData, m any) 
 
 // readZoneIntoState fetches zone data and sets schema attributes without Identity (for data sources).
 func readZoneIntoState(ctx context.Context, d *schema.ResourceData, domainAPI *domain.API, zoneName string) diag.Diagnostics {
-	zones, err := domainAPI.ListDNSZones(&domain.ListDNSZonesRequest{
-		ProjectID: types.ExpandStringPtr(d.Get("project_id")),
-		DNSZones:  []string{zoneName},
-	}, scw.WithContext(ctx))
+	zones, err := transport.RetryOn403Value(ctx, func() (*domain.ListDNSZonesResponse, error) {
+		return domainAPI.ListDNSZones(&domain.ListDNSZonesRequest{
+			ProjectID: types.ExpandStringPtr(d.Get("project_id")),
+			DNSZones:  []string{zoneName},
+		}, scw.WithContext(ctx))
+	})
 	if err != nil {
 		if httperrors.Is404(err) {
 			d.SetId("")
