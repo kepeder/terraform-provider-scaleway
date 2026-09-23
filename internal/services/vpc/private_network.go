@@ -15,6 +15,7 @@ import (
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/locality/zonal"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/meta"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/services/account"
+	"github.com/scaleway/terraform-provider-scaleway/v2/internal/transport"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/types"
 	"github.com/scaleway/terraform-provider-scaleway/v2/internal/verify"
 )
@@ -244,7 +245,9 @@ func ResourceVPCPrivateNetworkCreate(ctx context.Context, d *schema.ResourceData
 		req.Subnets = append(req.Subnets, ipv6Subnets...)
 	}
 
-	pn, err := vpcAPI.CreatePrivateNetwork(req, scw.WithContext(ctx))
+	pn, err := transport.RetryOn403Value(ctx, func() (*vpc.PrivateNetwork, error) {
+		return vpcAPI.CreatePrivateNetwork(req, scw.WithContext(ctx))
+	})
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -263,10 +266,12 @@ func ResourceVPCPrivateNetworkRead(ctx context.Context, d *schema.ResourceData, 
 		return diag.FromErr(err)
 	}
 
-	pn, err := vpcAPI.GetPrivateNetwork(&vpc.GetPrivateNetworkRequest{
-		PrivateNetworkID: ID,
-		Region:           region,
-	}, scw.WithContext(ctx))
+	pn, err := transport.RetryOn403Value(ctx, func() (*vpc.PrivateNetwork, error) {
+		return vpcAPI.GetPrivateNetwork(&vpc.GetPrivateNetworkRequest{
+			PrivateNetworkID: ID,
+			Region:           region,
+		}, scw.WithContext(ctx))
+	})
 	if err != nil {
 		if httperrors.Is404(err) {
 			d.SetId("")
